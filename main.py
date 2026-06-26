@@ -6,7 +6,6 @@ import os
 import json
 import random
 from datetime import datetime, timedelta
-import bcrypt
 import jwt
 import uvicorn
 
@@ -25,31 +24,16 @@ app.add_middleware(
 )
 
 # ============================================================
-# إعدادات الأمان (مؤقتة)
+# إعدادات الأمان
 # ============================================================
 SECRET_KEY = "my-super-secret-key-12345"
 
 # ============================================================
-# نماذج البيانات (Pydantic)
+# نماذج البيانات
 # ============================================================
 class LoginRequest(BaseModel):
     username: str
     password: str
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    full_name: str
-    role: str
-    is_active: bool
-
-class RouterResponse(BaseModel):
-    id: int
-    name: str
-    host: str
-    port: int
-    location: str
-    is_active: bool
 
 # ============================================================
 # دوال مساعدة
@@ -70,18 +54,15 @@ def verify_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ============================================================
-# المسارات (Endpoints) - المتطلبة من قبل التطبيق
+# المسارات
 # ============================================================
 
-# ---- الصحة ----
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "message": "The backend is running successfully.", "timestamp": datetime.now().isoformat()}
 
-# ---- تسجيل الدخول ----
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
-    # مستخدم افتراضي للاختبار
     if req.username == "admin" and req.password == "admin123":
         token = create_token(req.username, "superadmin")
         return {
@@ -98,7 +79,6 @@ async def login(req: LoginRequest):
         }
     raise HTTPException(status_code=401, detail="اسم المستخدم أو كلمة المرور غير صحيحة")
 
-# ---- بيانات المستخدم الحالي ----
 @app.get("/api/auth/me")
 async def get_current_user(payload: dict = Depends(verify_token)):
     return {
@@ -110,7 +90,6 @@ async def get_current_user(payload: dict = Depends(verify_token)):
         "expires_at": None
     }
 
-# ---- قائمة الراوترات ----
 @app.get("/api/routers")
 async def get_routers(payload: dict = Depends(verify_token)):
     return [
@@ -118,7 +97,6 @@ async def get_routers(payload: dict = Depends(verify_token)):
         {"id": 2, "name": "راوتر فرعي", "host": "192.168.2.1", "port": 8728, "location": "جدة", "is_active": True},
     ]
 
-# ---- إحصائيات يومية ----
 @app.get("/api/stats/daily/{router_id}")
 async def get_daily_stats(router_id: int, stat_date: Optional[str] = None, payload: dict = Depends(verify_token)):
     if not stat_date:
@@ -144,30 +122,6 @@ async def get_daily_stats(router_id: int, stat_date: Optional[str] = None, paylo
         "vlans": vlans
     }
 
-# ---- إحصائيات شهرية ----
-@app.get("/api/stats/monthly/{router_id}")
-async def get_monthly_stats(router_id: int, year: Optional[str] = None, month: Optional[str] = None, payload: dict = Depends(verify_token)):
-    if not year:
-        year = datetime.now().strftime("%Y")
-    if not month:
-        month = datetime.now().strftime("%m")
-    
-    days = []
-    for i in range(30):
-        days.append({
-            "date": (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d"),
-            "total_in": round(random.uniform(5, 100), 3),
-            "total_out": round(random.uniform(5, 100), 3),
-            "total_gb": round(random.uniform(10, 200), 3),
-            "vlan_count": random.randint(20, 60)
-        })
-    
-    return {
-        "days": days,
-        "grand_total_gb": round(random.uniform(500, 2000), 2)
-    }
-
-# ---- حالة النظام ----
 @app.get("/api/system/status")
 async def get_system_status(payload: dict = Depends(verify_token)):
     return {
@@ -186,7 +140,6 @@ async def get_system_status(payload: dict = Depends(verify_token)):
         "docker": {"running": 2, "total": 2}
     }
 
-# ---- التنبيهات ----
 @app.get("/api/system/notifications")
 async def get_notifications(payload: dict = Depends(verify_token)):
     return [
@@ -194,7 +147,6 @@ async def get_notifications(payload: dict = Depends(verify_token)):
         {"id": 2, "title": "استهلاك عالي", "body": "VLAN 110 تجاوز 50 GB", "type": "expiry", "priority": "high", "created_at": datetime.now().isoformat()}
     ]
 
-# ---- المستخدمون (قائمة بسيطة) ----
 @app.get("/api/users")
 async def get_users(payload: dict = Depends(verify_token)):
     return [
@@ -202,7 +154,9 @@ async def get_users(payload: dict = Depends(verify_token)):
         {"id": 2, "username": "user1", "full_name": "مستخدم تجريبي", "phone": "0511111111", "role": "viewer", "is_active": True}
     ]
 
-# ---- إذا لم يجد المسار ----
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(path: str):
     return {"error": f"المسار غير موجود: {path}"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

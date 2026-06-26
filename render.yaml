@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+asyncpg
+bcrypt
+pyjwt
+python-multipart

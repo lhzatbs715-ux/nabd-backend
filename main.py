@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
-import asyncpg
 import os
 import json
 import random
@@ -26,13 +25,12 @@ app.add_middleware(
 )
 
 # ============================================================
-# إعدادات قاعدة البيانات (PostgreSQL)
+# إعدادات الأمان (مؤقتة)
 # ============================================================
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost/db")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
+SECRET_KEY = "my-super-secret-key-12345"
 
 # ============================================================
-# النماذج (Pydantic)
+# نماذج البيانات (Pydantic)
 # ============================================================
 class LoginRequest(BaseModel):
     username: str
@@ -53,23 +51,9 @@ class RouterResponse(BaseModel):
     location: str
     is_active: bool
 
-class VLanData(BaseModel):
-    vlan_number: int
-    vlan_name: str
-    total_gb: float
-    consumption_level: str
-    comment: str
-
 # ============================================================
 # دوال مساعدة
 # ============================================================
-async def get_db():
-    conn = await asyncpg.connect(DATABASE_URL)
-    try:
-        yield conn
-    finally:
-        await conn.close()
-
 def create_token(username: str, role: str) -> str:
     payload = {"username": username, "role": role}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
@@ -86,100 +70,83 @@ def verify_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ============================================================
-# المسارات (Endpoints)
+# المسارات (Endpoints) - المتطلبة من قبل التطبيق
 # ============================================================
 
 # ---- الصحة ----
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+    return {"status": "ok", "message": "The backend is running successfully.", "timestamp": datetime.now().isoformat()}
 
 # ---- تسجيل الدخول ----
 @app.post("/api/auth/login")
-async def login(req: LoginRequest, conn: asyncpg.Connection = Depends(get_db)):
-    try:
-        user = await conn.fetchrow(
-            "SELECT id, username, full_name, password_hash, role, is_active, expires_at FROM users WHERE username = $1",
-            req.username
-        )
-        if user:
-            stored_hash = user['password_hash']
-            if bcrypt.checkpw(req.password.encode('utf-8'), stored_hash.encode('utf-8')):
-                token = create_token(user['username'], user['role'])
-                return {
-                    "success": True,
-                    "access_token": token,
-                    "user": {
-                        "id": user['id'],
-                        "username": user['username'],
-                        "full_name": user['full_name'],
-                        "role": user['role'],
-                        "is_active": user['is_active'],
-                        "expires_at": user['expires_at']
-                    }
-                }
-        raise HTTPException(status_code=401, detail="اسم المستخدم أو كلمة المرور غير صحيحة")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def login(req: LoginRequest):
+    # مستخدم افتراضي للاختبار
+    if req.username == "admin" and req.password == "admin123":
+        token = create_token(req.username, "superadmin")
+        return {
+            "success": True,
+            "access_token": token,
+            "user": {
+                "id": 1,
+                "username": "admin",
+                "full_name": "مدير النظام",
+                "role": "superadmin",
+                "is_active": True,
+                "expires_at": None
+            }
+        }
+    raise HTTPException(status_code=401, detail="اسم المستخدم أو كلمة المرور غير صحيحة")
 
-# ---- بيانات المستخدم ----
+# ---- بيانات المستخدم الحالي ----
 @app.get("/api/auth/me")
-async def get_current_user(payload: dict = Depends(verify_token), conn: asyncpg.Connection = Depends(get_db)):
-    try:
-        user = await conn.fetchrow(
-            "SELECT id, username, full_name, role, is_active, expires_at FROM users WHERE username = $1",
-            payload.get("username")
-        )
-        if user:
-            return dict(user)
-        raise HTTPException(status_code=404, detail="المستخدم غير موجود")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_current_user(payload: dict = Depends(verify_token)):
+    return {
+        "id": 1,
+        "username": payload.get("username"),
+        "full_name": "مدير النظام",
+        "role": "superadmin",
+        "is_active": True,
+        "expires_at": None
+    }
 
-# ---- الراوترات ----
+# ---- قائمة الراوترات ----
 @app.get("/api/routers")
-async def get_routers(payload: dict = Depends(verify_token), conn: asyncpg.Connection = Depends(get_db)):
-    try:
-        routers = await conn.fetch("SELECT * FROM routers ORDER BY id DESC")
-        return [dict(r) for r in routers]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def get_routers(payload: dict = Depends(verify_token)):
+    return [
+        {"id": 1, "name": "راوتر رئيسي", "host": "192.168.1.1", "port": 8728, "location": "الرياض", "is_active": True},
+        {"id": 2, "name": "راوتر فرعي", "host": "192.168.2.1", "port": 8728, "location": "جدة", "is_active": True},
+    ]
 
 # ---- إحصائيات يومية ----
 @app.get("/api/stats/daily/{router_id}")
-async def get_daily_stats(router_id: int, stat_date: str = None, payload: dict = Depends(verify_token)):
+async def get_daily_stats(router_id: int, stat_date: Optional[str] = None, payload: dict = Depends(verify_token)):
     if not stat_date:
         stat_date = datetime.now().strftime("%Y-%m-%d")
     
-    # محاكاة بيانات (Mock)
-    total_gb = random.randint(10, 200)
-    vlan_count = random.randint(20, 80)
-    high_count = random.randint(1, 10)
-    zero_count = random.randint(0, 5)
-    
+    levels = ["high", "medium", "low", "inactive"]
     vlans = []
     for i in range(random.randint(5, 15)):
-        levels = ["high", "medium", "low", "inactive"]
         vlans.append({
             "vlan_number": 100 + i,
             "vlan_name": f"VLAN_{100+i}",
-            "gb_total": round(random.uniform(1, 50), 3),
+            "gb_total": round(random.uniform(0.5, 50), 3),
             "consumption_level": levels[random.randint(0, 3)],
             "comment": ""
         })
     
     return {
-        "total_gb": total_gb,
-        "vlan_count": vlan_count,
-        "high_count": high_count,
-        "zero_count": zero_count,
+        "total_gb": round(random.uniform(10, 200), 2),
+        "vlan_count": len(vlans),
+        "high_count": sum(1 for v in vlans if v["consumption_level"] == "high"),
+        "zero_count": sum(1 for v in vlans if v["consumption_level"] == "inactive"),
         "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "vlans": vlans
     }
 
 # ---- إحصائيات شهرية ----
 @app.get("/api/stats/monthly/{router_id}")
-async def get_monthly_stats(router_id: int, year: str = None, month: str = None, payload: dict = Depends(verify_token)):
+async def get_monthly_stats(router_id: int, year: Optional[str] = None, month: Optional[str] = None, payload: dict = Depends(verify_token)):
     if not year:
         year = datetime.now().strftime("%Y")
     if not month:
@@ -227,8 +194,15 @@ async def get_notifications(payload: dict = Depends(verify_token)):
         {"id": 2, "title": "استهلاك عالي", "body": "VLAN 110 تجاوز 50 GB", "type": "expiry", "priority": "high", "created_at": datetime.now().isoformat()}
     ]
 
-# ============================================================
-# تشغيل التطبيق
-# ============================================================
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# ---- المستخدمون (قائمة بسيطة) ----
+@app.get("/api/users")
+async def get_users(payload: dict = Depends(verify_token)):
+    return [
+        {"id": 1, "username": "admin", "full_name": "مدير النظام", "phone": "0500000000", "role": "superadmin", "is_active": True},
+        {"id": 2, "username": "user1", "full_name": "مستخدم تجريبي", "phone": "0511111111", "role": "viewer", "is_active": True}
+    ]
+
+# ---- إذا لم يجد المسار ----
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(path: str):
+    return {"error": f"المسار غير موجود: {path}"}

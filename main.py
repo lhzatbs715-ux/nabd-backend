@@ -1,17 +1,12 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List
-import os
-import json
+from typing import Optional
 import random
 from datetime import datetime, timedelta
 import jwt
 import uvicorn
 
-# ============================================================
-# إعدادات التطبيق
-# ============================================================
 app = FastAPI()
 
 # CORS
@@ -23,43 +18,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================================================
-# إعدادات الأمان
-# ============================================================
 SECRET_KEY = "my-super-secret-key-12345"
 
-# ============================================================
-# نماذج البيانات
-# ============================================================
 class LoginRequest(BaseModel):
     username: str
     password: str
 
-# ============================================================
-# دوال مساعدة
-# ============================================================
 def create_token(username: str, role: str) -> str:
     payload = {"username": username, "role": role}
-    token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    return token
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
 
 def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing token")
     try:
         token = authorization.replace("Bearer ", "")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return payload
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # ============================================================
-# المسارات
+# ✅ المسارات الصحيحة (بدون /api/ في التعريف)
 # ============================================================
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "message": "The backend is running successfully.", "timestamp": datetime.now().isoformat()}
+    return {"status": "ok", "message": "Backend is running", "timestamp": datetime.now().isoformat()}
 
 @app.post("/api/auth/login")
 async def login(req: LoginRequest):
@@ -126,16 +110,8 @@ async def get_daily_stats(router_id: int, stat_date: Optional[str] = None, paylo
 async def get_system_status(payload: dict = Depends(verify_token)):
     return {
         "cpu_percent": random.randint(5, 60),
-        "memory": {
-            "percent": random.randint(20, 80),
-            "used_gb": round(random.uniform(2, 8), 1),
-            "total_gb": 16
-        },
-        "disk": {
-            "percent": random.randint(30, 70),
-            "used_gb": round(random.uniform(20, 50), 1),
-            "total_gb": 100
-        },
+        "memory": {"percent": random.randint(20, 80), "used_gb": round(random.uniform(2, 8), 1), "total_gb": 16},
+        "disk": {"percent": random.randint(30, 70), "used_gb": round(random.uniform(20, 50), 1), "total_gb": 100},
         "uptime": "3 أيام و 12 ساعة",
         "docker": {"running": 2, "total": 2}
     }
@@ -154,9 +130,9 @@ async def get_users(payload: dict = Depends(verify_token)):
         {"id": 2, "username": "user1", "full_name": "مستخدم تجريبي", "phone": "0511111111", "role": "viewer", "is_active": True}
     ]
 
+# ============================================================
+# ❌ إذا لم يجد المسار
+# ============================================================
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(path: str):
     return {"error": f"المسار غير موجود: {path}"}
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)

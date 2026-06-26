@@ -1,6 +1,4 @@
 fastapi
 uvicorn
-asyncpg
-bcrypt
-pyjwt
+jwt
 python-multipart
